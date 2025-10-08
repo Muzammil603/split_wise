@@ -12,11 +12,15 @@ import { FxModule } from './fx/fx.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { RecurringModule } from './recurring/recurring.module.js';
 import { AuditModule } from './audit/audit.module.js';
+import { PrivacyModule } from './privacy/privacy.module.js';
+import { ActivityModule } from './activity/activity.module.js';
 import { scheduleRecurring } from './recurring/recurring.scheduler.js';
 import { worker } from './recurring/recurring.worker.js';
 import { notificationWorker } from './notifications/notifications.worker.js';
 import { IdempotencyService } from './idempotency/idempotency.service.js';
 import { IdempotencyInterceptor } from './idempotency/idempotency.interceptor.js';
+import { RedisService } from './redis/redis.service.js';
+import { BalanceWriterService } from './balances/balance-writer.service.js';
 import { join } from 'node:path';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 
@@ -34,10 +38,14 @@ import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
         NotificationsModule,
         RecurringModule,
         AuditModule,
+        PrivacyModule,
+        ActivityModule,
   ],
   providers: [
     PrismaService,
+    RedisService,
     IdempotencyService,
+    BalanceWriterService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
   ],

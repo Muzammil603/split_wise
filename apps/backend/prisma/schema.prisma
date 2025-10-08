@@ -14,6 +14,13 @@ model User {
   image            String?
   passwordHash     String
   createdAt        DateTime       @default(now())
+  
+  // Privacy fields
+  deletedAt        DateTime?
+  anonymized       Boolean        @default(false)
+  anonName         String?        // e.g., "Deleted User"
+  anonAvatarUrl    String?        // optional generic avatar
+  
   paidExpenses     Expense[]      @relation("ExpensePayer")
   expenseSplits    ExpenseSplit[]
   groupMemberships GroupMember[]
@@ -163,6 +170,34 @@ model IdempotencyKey {
   @@unique([key, scope]) // the main uniqueness guarantee
   @@index([scope, createdAt])
   @@index([expiresAt])
+}
+
+model GroupBalance {
+  groupId      String
+  userId       String
+  balanceCents BigInt   @default(0) // Postgres BIGINT
+
+  updatedAt    DateTime @updatedAt
+
+  @@id([groupId, userId])
+  @@index([groupId])
+}
+
+model Activity {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+
+  groupId    String
+  actorId    String?        // user who did it (null for system jobs)
+  type       String         // "expense.create" | "expense.update" | "expense.delete" | "settlement.create" | "invite.accept" | "recurring.run" | "file.upload" | ...
+  targetType String?        // "expense" | "settlement" | "invite" | "file"
+  targetId   String?        // id of the entity
+
+  // Keep small, useful, REDACTED information (never store secrets)
+  data       Json
+
+  @@index([groupId, createdAt, id])  // for pagination
+  @@index([actorId, createdAt])
 }
 
 model AuditLog {

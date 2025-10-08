@@ -7,8 +7,31 @@ services:
       POSTGRES_USER: swp
       POSTGRES_PASSWORD: swp
       POSTGRES_DB: swp
+      # Enable WAL archiving to pgBackRest
+      POSTGRES_INITDB_ARGS: "--waldir=/var/lib/postgresql/wal"
     ports: ["5432:5432"]
-    volumes: [dbdata:/var/lib/postgresql/data]
+    volumes: 
+      - dbdata:/var/lib/postgresql/data
+      - waldata:/var/lib/postgresql/wal
+    command: >
+      postgres
+      -c wal_level=replica
+      -c archive_mode=on
+      -c archive_command='pgbackrest --stanza=swp archive-push %p'
+      -c max_wal_senders=3
+
+  pgbackrest:
+    image: ghcr.io/pgbackrest/pgbackrest:latest
+    container_name: swp-pgbackrest
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+      - waldata:/var/lib/postgresql/wal
+      - ./pgbackrest:/etc/pgbackrest
+    environment:
+      PGBACKREST_LOG_LEVEL_CONSOLE: info
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+    depends_on: [db]
 
   redis:
     image: redis:7-alpine
@@ -27,4 +50,5 @@ services:
 
 volumes:
   dbdata:
+  waldata:
   miniodata:

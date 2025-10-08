@@ -1,0 +1,37 @@
+{
+  "Rules": [
+    {
+      "ID": "NonCurrentToGlacier",
+      "Status": "Enabled",
+      "NoncurrentVersionTransitions": [
+        { 
+          "NoncurrentDays": 60, 
+          "StorageClass": "GLACIER_IR" 
+        }
+      ],
+      "NoncurrentVersionExpiration": { 
+        "NoncurrentDays": 3650 
+      }
+    },
+    {
+      "ID": "PurgeTagged",
+      "Status": "Enabled",
+      "Filter": { 
+        "Tag": { 
+          "Key": "purge", 
+          "Value": "true" 
+        } 
+      },
+      "Expiration": { 
+        "Days": 14 
+      }
+    },
+    {
+      "ID": "DeleteIncompleteMultipartUploads",
+      "Status": "Enabled",
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 7
+      }
+    }
+  ]
+}

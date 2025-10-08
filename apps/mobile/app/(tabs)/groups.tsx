@@ -34,7 +34,7 @@ export default function Groups() {
     <View style={styles.container}>
       <Text style={styles.title}>Your Groups</Text>
       
-      {!data && !isLoading && (
+      {(!data || (!data.items && !data.length)) && !isLoading && (
         <View style={styles.center}>
           <Text style={styles.helpText}>Click "Load Groups" to fetch your groups</Text>
           <Text style={styles.helpText}>Make sure you're logged in first!</Text>
@@ -42,12 +42,12 @@ export default function Groups() {
         </View>
       )}
       
-      {data?.length === 0 ? (
+      {data?.items?.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.empty}>No groups found. Create your first group!</Text>
         </View>
       ) : (
-        data?.map((g: any) => (
+        data?.items?.map((g: any) => (
           <View key={g.id} style={styles.groupCard}>
             <Text style={styles.groupName}>{g.name}</Text>
             <Text style={styles.groupCurrency}>{g.currency}</Text>

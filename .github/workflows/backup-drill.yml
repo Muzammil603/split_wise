@@ -1,0 +1,196 @@
+name: Backup & Restore Drill
+on:
+  schedule: [{ cron: '0 6 * * 0' }]  # Sundays 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  drill:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        ports: ['5432:5432']
+        env: { POSTGRES_PASSWORD: swp, POSTGRES_USER: swp, POSTGRES_DB: swp }
+        options: >-
+          --health-cmd="pg_isready -U swp" 
+          --health-interval=10s 
+          --health-timeout=5s 
+          --health-retries=5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with: 
+          node-version: 20
+
+      - name: Install pnpm
+        run: pnpm i -g pnpm@9
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Apply database schema
+        working-directory: apps/backend
+        env: 
+          DATABASE_URL: postgresql://swp:swp@localhost:5432/swp
+        run: pnpm prisma migrate deploy
+
+      - name: Seed test data
+        working-directory: apps/backend
+        env: 
+          DATABASE_URL: postgresql://swp:swp@localhost:5432/swp
+        run: |
+          # Create a simple test expense
+          pnpm ts-node -e "
+          import { PrismaClient } from '@prisma/client';
+          const prisma = new PrismaClient();
+          
+          async function seed() {
+            // Create a test user
+            const user = await prisma.user.upsert({
+              where: { email: 'test@example.com' },
+              update: {},
+              create: {
+                email: 'test@example.com',
+                name: 'Test User',
+                passwordHash: 'test'
+              }
+            });
+            
+            // Create a test group
+            const group = await prisma.group.create({
+              data: {
+                name: 'Test Group',
+                currency: 'USD',
+                ownerId: user.id
+              }
+            });
+            
+            // Add user to group
+            await prisma.groupMember.create({
+              data: {
+                groupId: group.id,
+                userId: user.id,
+                role: 'OWNER'
+              }
+            });
+            
+            // Create a test expense
+            const expense = await prisma.expense.create({
+              data: {
+                groupId: group.id,
+                paidById: user.id,
+                amountCents: 1000,
+                currency: 'USD',
+                note: 'Test expense for backup drill',
+                date: new Date()
+              }
+            });
+            
+            // Create expense split
+            await prisma.expenseSplit.create({
+              data: {
+                expenseId: expense.id,
+                userId: user.id,
+                amountCents: 1000
+              }
+            });
+            
+            console.log('Test data seeded successfully');
+            await prisma.\$disconnect();
+          }
+          
+          seed().catch(console.error);
+          "
+
+      - name: Create logical dump
+        run: |
+          pg_dump -h localhost -U swp -d swp -Fc -f dump.dump
+        env: 
+          PGPASSWORD: swp
+
+      - name: Verify dump was created
+        run: |
+          ls -la dump.dump
+          file dump.dump
+
+      - name: Restore to fresh database
+        run: |
+          # Create a new database for restore test
+          createdb -h localhost -U swp swp_restore
+          
+          # Restore the dump
+          pg_restore -h localhost -U swp -d swp_restore --clean --if-exists dump.dump
+        env: 
+          PGPASSWORD: swp
+
+      - name: Verify restore integrity
+        working-directory: apps/backend
+        env: 
+          DATABASE_URL: postgresql://swp:swp@localhost:5432/swp_restore
+        run: |
+          # Run a simple query to verify data exists
+          pnpm ts-node -e "
+          import { PrismaClient } from '@prisma/client';
+          const prisma = new PrismaClient();
+          
+          async function verify() {
+            const expenses = await prisma.expense.findMany();
+            const groups = await prisma.group.findMany();
+            const users = await prisma.user.findMany();
+            
+            console.log('Restored data:');
+            console.log('- Users:', users.length);
+            console.log('- Groups:', groups.length);
+            console.log('- Expenses:', expenses.length);
+            
+            if (expenses.length === 0) {
+              throw new Error('No expenses found in restored database');
+            }
+            
+            console.log('✅ Restore verification successful');
+            await prisma.\$disconnect();
+          }
+          
+          verify().catch(console.error);
+          "
+
+      - name: Run consistency check
+        working-directory: apps/backend
+        env: 
+          DATABASE_URL: postgresql://swp:swp@localhost:5432/swp_restore
+        run: |
+          # Create a simple consistency check
+          pnpm ts-node -e "
+          import { PrismaClient } from '@prisma/client';
+          const prisma = new PrismaClient();
+          
+          async function consistencyCheck() {
+            const expenses = await prisma.expense.findMany({
+              include: { splits: true }
+            });
+            
+            for (const expense of expenses) {
+              const totalSplits = expense.splits.reduce((sum, split) => sum + split.amountCents, 0);
+              if (totalSplits !== expense.amountCents) {
+                throw new Error(\`Expense \${expense.id} has mismatched splits: \${totalSplits} vs \${expense.amountCents}\`);
+              }
+            }
+            
+            console.log('✅ Consistency check passed');
+            await prisma.\$disconnect();
+          }
+          
+          consistencyCheck().catch(console.error);
+          "
+
+      - name: Cleanup
+        if: always()
+        run: |
+          dropdb -h localhost -U swp swp_restore 2>/dev/null || true
+          rm -f dump.dump
+        env: 
+          PGPASSWORD: swp

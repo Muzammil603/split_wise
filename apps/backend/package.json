@@ -19,6 +19,9 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
+    "e2e": "playwright test -c tests/playwright.config.ts",
+    "e2e:ui": "playwright test -c tests/playwright.config.ts --ui",
+    "e2e:report": "playwright show-report",
     "prisma": "prisma"
   },
   "dependencies": {
@@ -55,6 +58,7 @@
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
+    "@playwright/test": "^1.56.0",
     "@types/cookie-parser": "^1.4.9",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",

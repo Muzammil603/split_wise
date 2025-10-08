@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { RedisService } from '../redis/redis.service.js';
+import { BalanceWriterService } from '../balances/balance-writer.service.js';
+import { ActivityService } from '../activity/activity.service.js';
+import { cacheKey } from '../common/cache.util.js';
+import { inc, toCents } from '../balances/balance.util.js';
 import { suggestTransfers } from '@swp/shared/settlements';
 
 export type RecordSettlementDto = {
@@ -18,7 +23,10 @@ export type RecordSettlementDto = {
 export class SettlementsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly notifications: NotificationsService
+    private readonly notifications: NotificationsService,
+    private readonly redis: RedisService,
+    private readonly balances: BalanceWriterService,
+    private readonly activity: ActivityService
   ) {}
 
   /**
@@ -37,8 +45,35 @@ export class SettlementsService {
       },
     });
 
+    // Update projection: fromUser pays -> their balance improves (+), toUser receives -> their balance decreases (-)
+    const deltaMap = new Map<string, bigint>();
+    inc(deltaMap, dto.fromUserId, toCents(dto.amountCents));
+    inc(deltaMap, dto.toUserId, -toCents(dto.amountCents));
+
+    await this.balances.applyDeltas(dto.groupId, [...deltaMap.entries()].map(([userId, deltaCents]) => ({ userId, deltaCents })));
+
+    // Emit activity
+    await this.activity.push({
+      groupId: dto.groupId,
+      actorId: dto.fromUserId,
+      type: "settlement.create",
+      targetType: "settlement",
+      targetId: settlement.id,
+      data: { 
+        fromUserId: dto.fromUserId, 
+        toUserId: dto.toUserId, 
+        amountCents: dto.amountCents, 
+        currency: dto.currency, 
+        method: dto.method ?? "unknown" 
+      },
+    });
+
     // Send notifications
     await this.notifications.notifySettlementRecorded(settlement.id, dto.groupId);
+
+    // Invalidate caches for this group
+    await this.redis.client.del(cacheKey.balances(dto.groupId));
+    console.log(`[cache] invalidated balances for group ${dto.groupId}`);
 
     return settlement;
   }

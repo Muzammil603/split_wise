@@ -1,6 +1,6 @@
-import { Controller, Post, UploadedFile, UseInterceptors, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Post, UploadedFile, UseInterceptors, UseGuards, BadRequestException, Delete, Param } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, PutObjectTaggingCommand } from '@aws-sdk/client-s3';
 import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import crypto from 'crypto';
@@ -53,6 +53,7 @@ export class FilesController {
           Key: key,
           Body: file.buffer,
           ContentType: file.mimetype,
+          Tagging: 'type=receipt&retention=standard', // For lifecycle management
         })
       );
       
@@ -67,6 +68,55 @@ export class FilesController {
     } catch (error) {
       console.error('S3 upload error:', error);
       throw new BadRequestException('Failed to upload file');
+    }
+  }
+
+  @Delete(':key')
+  async delete(@Param('key') key: string) {
+    try {
+      // Tag the object for deletion (lifecycle policy will handle actual deletion)
+      await this.s3.send(
+        new PutObjectTaggingCommand({
+          Bucket: this.configService.get('S3_BUCKET'),
+          Key: key,
+          Tagging: {
+            TagSet: [
+              { Key: 'purge', Value: 'true' },
+              { Key: 'deletedAt', Value: new Date().toISOString() }
+            ]
+          }
+        })
+      );
+      
+      return { message: 'File marked for deletion', key };
+    } catch (error) {
+      console.error('S3 delete error:', error);
+      throw new BadRequestException('Failed to delete file');
+    }
+  }
+
+  @Post(':key/restore')
+  async restore(@Param('key') key: string) {
+    try {
+      // Remove purge tag to prevent deletion
+      await this.s3.send(
+        new PutObjectTaggingCommand({
+          Bucket: this.configService.get('S3_BUCKET'),
+          Key: key,
+          Tagging: {
+            TagSet: [
+              { Key: 'type', Value: 'receipt' },
+              { Key: 'retention', Value: 'standard' },
+              { Key: 'restoredAt', Value: new Date().toISOString() }
+            ]
+          }
+        })
+      );
+      
+      return { message: 'File restored', key };
+    } catch (error) {
+      console.error('S3 restore error:', error);
+      throw new BadRequestException('Failed to restore file');
     }
   }
 }
