@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build artifacts & coverage
+dist/
+coverage/
+
+# Expo (React Native)
+.expo/
+.expo-shared/
+
+# Environment files (keep example files!)
+.env
+.env.*
+!.env.example
+
+# OS/editor noise (nice to have)
+.DS_Store
+.idea/
+.vscode/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*

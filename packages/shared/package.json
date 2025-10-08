@@ -1,0 +1,14 @@
+{
+    "name": "@swp/shared",
+    "version": "0.0.0",
+    "type": "module",
+    "files": ["dist"],
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+      "./split": { "types": "./dist/split.d.ts", "default": "./dist/split.js" },
+      "./settlements": { "types": "./dist/settlements.d.ts", "default": "./dist/settlements.js" }
+    },
+    "scripts": { "build": "tsc -p tsconfig.json", "clean": "rm -rf dist" }
+  }
