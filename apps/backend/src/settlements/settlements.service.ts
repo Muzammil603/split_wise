@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { suggestTransfers } from '@swp/shared/settlements';
 
 export type RecordSettlementDto = {
@@ -15,13 +16,16 @@ export type RecordSettlementDto = {
 
 @Injectable()
 export class SettlementsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService
+  ) {}
 
   /**
    * Create a settlement record (manual entry)
    */
   async record(dto: RecordSettlementDto) {
-    return this.prisma.settlement.create({
+    const settlement = await this.prisma.settlement.create({
       data: {
         groupId: dto.groupId,
         fromUserId: dto.fromUserId,
@@ -30,9 +34,13 @@ export class SettlementsService {
         currency: dto.currency ?? 'USD',
         date: dto.date ? new Date(dto.date) : new Date(),
         note: dto.note,
-        method: dto.method,
       },
     });
+
+    // Send notifications
+    await this.notifications.notifySettlementRecorded(settlement.id, dto.groupId);
+
+    return settlement;
   }
 
   /**

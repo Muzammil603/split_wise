@@ -1,8 +1,9 @@
-import { Controller, Post, UploadedFile, UseInterceptors, UseGuards } from '@nestjs/common';
+import { Controller, Post, UploadedFile, UseInterceptors, UseGuards, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
+import crypto from 'crypto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('files')
@@ -22,13 +23,28 @@ export class FilesController {
   }
 
   @Post('upload')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
   async upload(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
-      throw new Error('No file uploaded');
+      throw new BadRequestException('No file uploaded');
     }
 
-    const key = `receipts/${Date.now()}-${file.originalname}`;
+    // Validate file type
+    const allowedMimeTypes = [
+      'image/jpeg',
+      'image/png', 
+      'application/pdf',
+      'image/heic',
+      'image/heif'
+    ];
+    
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      throw new BadRequestException('Unsupported file type');
+    }
+
+    // Compute SHA256 checksum for deduplication
+    const hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
+    const key = `receipts/${hash}-${Date.now()}`;
     
     try {
       await this.s3.send(
@@ -45,11 +61,12 @@ export class FilesController {
         url: `${this.configService.get('S3_ENDPOINT')}/${this.configService.get('S3_BUCKET')}/${key}`,
         originalName: file.originalname,
         size: file.size,
-        mimeType: file.mimetype
+        mimeType: file.mimetype,
+        hash
       };
     } catch (error) {
       console.error('S3 upload error:', error);
-      throw new Error('Failed to upload file');
+      throw new BadRequestException('Failed to upload file');
     }
   }
 }

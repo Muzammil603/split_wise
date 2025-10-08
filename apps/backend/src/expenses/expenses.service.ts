@@ -1,9 +1,11 @@
 import { Injectable, BadRequestException } from "@nestjs/common";
 import { PrismaService } from "../prisma.service.js";
-import { equalSplit, sharesSplit, percentSplit } from '@swp/shared/split';
+
 @Injectable()
 export class ExpensesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService
+  ) {}
 
   async add(data: {
     groupId: string;
@@ -25,26 +27,45 @@ export class ExpensesService {
     const userIds = data.beneficiaries ?? group.members.map((m) => m.userId);
     let splits: { userId: string; amountCents: number }[] = [];
 
-    if (data.mode === "equal") splits = equalSplit({ totalCents: data.totalCents, userIds });
-    else if (data.mode === "shares") splits = sharesSplit(data.totalCents, data.items!);
-    else if (data.mode === "percent") splits = percentSplit(data.totalCents, data.items!);
-    else if (data.mode === "exact") {
-      const sum = data.items!.reduce((a, x) => a + x.amountCents, 0);
-      if (sum !== data.totalCents) throw new BadRequestException("Exact sum mismatch");
-      splits = data.items!;
+    if (data.mode === "equal") {
+      // Simple equal split
+      const amountPerUser = Math.floor(data.totalCents / userIds.length);
+      const remainder = data.totalCents % userIds.length;
+      splits = userIds.map((userId, index) => ({
+        userId,
+        amountCents: amountPerUser + (index < remainder ? 1 : 0)
+      }));
+    } else if (data.mode === "exact") {
+      splits = data.items!.map((item) => ({ userId: item.userId, amountCents: item.amountCents }));
+    } else {
+      throw new BadRequestException("Only 'equal' and 'exact' modes are supported for now");
     }
 
-    return this.prisma.expense.create({
+    const expense = await this.prisma.expense.create({
       data: {
         groupId: data.groupId,
         paidById: data.paidById,
         amountCents: data.totalCents,
         currency: data.currency,
-        date: data.date ? new Date(data.date) : new Date(),
         note: data.note,
-        splits: { createMany: { data: splits } },
+        date: data.date ? new Date(data.date) : new Date(),
+        splits: {
+          createMany: {
+            data: splits,
+          },
+        },
       },
-      include: { splits: true },
+      include: {
+        paidBy: true,
+        group: true,
+        splits: {
+          include: { user: true }
+        }
+      },
     });
+
+    console.log(`[Expense] Created expense ${expense.id} for group ${data.groupId}`);
+
+    return expense;
   }
 }

@@ -1,20 +1,28 @@
 import { useState } from "react";
 import { View, Text, TextInput, Button, StyleSheet, Alert } from "react-native";
-import { api, setAccessToken } from "../../src/lib/api";
+import { api, setTokens } from "../../src/lib/api";
 
 export default function Login() {
   const [email, setEmail] = useState("alice@example.com");
   const [password, setPassword] = useState("password123");
   const [isLoading, setIsLoading] = useState(false);
+  const [loginStatus, setLoginStatus] = useState<string>("");
 
   async function handleLogin() {
     setIsLoading(true);
+    setLoginStatus("");
     try {
+      console.log("Attempting login...");
       const response = await api.post("/auth/login", { email, password });
-      const { accessToken } = response.data;
-      setAccessToken(accessToken);
+      console.log("Login response:", response.data);
+      const { access, refresh } = response.data;
+      setTokens(access, refresh);
+      console.log("Tokens set:", access ? "YES" : "NO", refresh ? "YES" : "NO");
+      setLoginStatus("✅ Login successful!");
       Alert.alert("Success", "Logged in successfully!");
     } catch (error: any) {
+      console.error("Login error:", error);
+      setLoginStatus("❌ Login failed: " + (error.response?.data?.message || "Unknown error"));
       Alert.alert("Error", error.response?.data?.message || "Login failed");
     } finally {
       setIsLoading(false);
@@ -23,24 +31,32 @@ export default function Login() {
 
   async function handleRegister() {
     setIsLoading(true);
+    setLoginStatus("");
     try {
+      console.log("Attempting registration...");
       const response = await api.post("/auth/register", { 
         email, 
         password, 
         name: email.split("@")[0] 
       });
-      const { accessToken } = response.data;
-      setAccessToken(accessToken);
+      console.log("Register response:", response.data);
+      const { access, refresh } = response.data;
+      setTokens(access, refresh);
+      console.log("Tokens set:", access ? "YES" : "NO", refresh ? "YES" : "NO");
+      setLoginStatus("✅ Registration successful!");
       Alert.alert("Success", "Registered and logged in successfully!");
     } catch (error: any) {
-      Alert.alert("Error", error.response?.data?.message || "Registration failed");
+      console.error("Register error:", error);
+      const errorMessage = error.response?.data?.message || "Registration failed";
+      setLoginStatus("❌ Registration failed: " + errorMessage);
+      Alert.alert("Error", errorMessage);
     } finally {
       setIsLoading(false);
     }
   }
 
   function handleLogout() {
-    setAccessToken(null);
+    setTokens(null, null);
     Alert.alert("Success", "Logged out successfully!");
   }
 
@@ -87,6 +103,12 @@ export default function Login() {
           onPress={handleLogout}
           color="#F44336"
         />
+        
+        {loginStatus ? (
+          <View style={styles.statusContainer}>
+            <Text style={styles.statusText}>{loginStatus}</Text>
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -132,5 +154,17 @@ const styles = StyleSheet.create({
   },
   spacer: {
     height: 16,
+  },
+  statusContainer: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  statusText: {
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });

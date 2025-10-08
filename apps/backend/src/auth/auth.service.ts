@@ -15,6 +15,18 @@ export class AuthService {
     private readonly cfg: ConfigService,
   ) {}
 
+  private tokens(userId: string, email?: string | null) {
+    const access = this.jwt.sign({ sub: userId, email: email ?? undefined }, { 
+      secret: this.cfg.getOrThrow<string>('JWT_ACCESS_SECRET'), 
+      expiresIn: '15m' 
+    });
+    const refresh = this.jwt.sign({ sub: userId }, { 
+      secret: this.cfg.getOrThrow<string>('JWT_REFRESH_SECRET'), 
+      expiresIn: '30d' 
+    });
+    return { access, refresh };
+  }
+
   async register(dto: RegisterDto) {
     const exists = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (exists) throw new ConflictException('Email in use');
@@ -29,8 +41,8 @@ export class AuthService {
       select: { id: true, email: true, name: true },
     });
 
-    const accessToken = await this.signAccessToken(user.id, user.email);
-    return { accessToken, user };
+    const tokens = this.tokens(user.id, user.email);
+    return { ...tokens, user };
   }
 
   async login(dto: LoginDto) {
@@ -42,15 +54,20 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const accessToken = await this.signAccessToken(user.id, user.email);
-    return { accessToken, user: { id: user.id, email: user.email, name: user.name } };
+    const tokens = this.tokens(user.id, user.email);
+    return { ...tokens, user: { id: user.id, email: user.email, name: user.name } };
   }
 
-  // Access token only for now. Refresh/rotation can be added later.
-  private async signAccessToken(userId: string, email?: string | null) {
-    const payload = { sub: userId, email: email ?? undefined };
-    const secret = this.cfg.getOrThrow<string>('JWT_ACCESS_SECRET');
-    const expiresIn = this.cfg.get<string>('JWT_EXPIRES_IN') ?? '15m';
-    return this.jwt.signAsync(payload, { secret, expiresIn });
+  async refresh(refresh: string) {
+    try {
+      const payload = this.jwt.verify<{ sub: string }>(refresh, { 
+        secret: this.cfg.getOrThrow<string>('JWT_REFRESH_SECRET') 
+      });
+      // rotation: always issue a brand new pair on refresh
+      return this.tokens(payload.sub);
+    } catch {
+      throw new UnauthorizedException();
+    }
   }
+
 }

@@ -8,82 +8,115 @@ datasource db {
 }
 
 model User {
-  id          String   @id @default(cuid())
-  name        String
-  email       String   @unique
-  image       String?
-  passwordHash String
-  createdAt   DateTime @default(now())
-  memberships GroupMember[]
-  expensesPaid Expense[] @relation("PaidBy")
-  splits      ExpenseSplit[]
-  settlementsFrom Settlement[] @relation("SettlementsFrom")
-  settlementsTo   Settlement[] @relation("SettlementsTo")
+  id               String         @id @default(cuid())
+  name             String
+  email            String         @unique
+  image            String?
+  passwordHash     String
+  createdAt        DateTime       @default(now())
+  paidExpenses     Expense[]      @relation("ExpensePayer")
+  expenseSplits    ExpenseSplit[]
+  groupMemberships GroupMember[]
+  settlementsFrom  Settlement[]   @relation("SettlementFrom")
+  settlementsTo    Settlement[]   @relation("SettlementTo")
+  notificationPref NotificationPref?
 }
 
 model Group {
-  id        String   @id @default(cuid())
-  name      String
-  currency  String   // e.g., "USD"
-  createdBy String
-  createdAt DateTime @default(now())
-  members   GroupMember[]
-  expenses  Expense[]
+  id          String        @id @default(cuid())
+  name        String
+  currency    String
+  createdBy   String
+  createdAt   DateTime      @default(now())
+  expenses    Expense[]
+  members     GroupMember[]
   settlements Settlement[]
+  invites     Invite[]
+  recurringExpenses RecurringExpense[]
+
+  @@index([createdAt, id])
 }
 
 model GroupMember {
-  id        String  @id @default(cuid())
-  group     Group   @relation(fields: [groupId], references: [id])
-  groupId   String
-  user      User    @relation(fields: [userId], references: [id])
-  userId    String
-  role      String  // 'owner' | 'member'
-  joinedAt  DateTime @default(now())
+  id       String   @id @default(cuid())
+  groupId  String
+  userId   String
+  role     String
+  joinedAt DateTime @default(now())
+  group    Group    @relation(fields: [groupId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+
   @@unique([groupId, userId])
 }
 
 model Expense {
-  id         String   @id @default(cuid())
-  group      Group    @relation(fields: [groupId], references: [id])
-  groupId    String
-  paidBy     User     @relation("PaidBy", fields: [paidById], references: [id])
-  paidById   String
+  id          String         @id @default(cuid())
+  groupId     String
+  paidById    String
   amountCents Int
-  currency   String
-  date       DateTime
-  category   String?
-  note       String?
-  receiptId  String?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  splits     ExpenseSplit[]
+  currency    String
+  note        String?
+  date        DateTime       @default(now())
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  group       Group          @relation(fields: [groupId], references: [id])
+  paidBy      User           @relation("ExpensePayer", fields: [paidById], references: [id])
+  splits      ExpenseSplit[]
+
+  @@index([groupId, createdAt, id])
 }
 
 model ExpenseSplit {
-  id         String  @id @default(cuid())
-  expense    Expense @relation(fields: [expenseId], references: [id])
-  expenseId  String
-  user       User    @relation(fields: [userId], references: [id])
-  userId     String
-  amountCents Int
+  id           String @id @default(cuid())
+  expenseId    String
+  userId       String
+  amountCents  Int
+  expense      Expense @relation(fields: [expenseId], references: [id])
+  user         User    @relation(fields: [userId], references: [id])
+
   @@unique([expenseId, userId])
 }
 
 model Settlement {
-  id          String  @id @default(cuid())
-  group       Group   @relation(fields: [groupId], references: [id])
+  id          String   @id @default(cuid())
   groupId     String
-  fromUser    User    @relation("SettlementsFrom", fields: [fromUserId], references: [id])
   fromUserId  String
-  toUser      User    @relation("SettlementsTo", fields: [toUserId], references: [id])
   toUserId    String
   amountCents Int
   currency    String
-  date        DateTime
   note        String?
-  method      String?  // 'cash' | 'venmo' | 'paypal' | etc
+  date        DateTime @default(now())
   createdAt   DateTime @default(now())
+  group       Group    @relation(fields: [groupId], references: [id])
+  fromUser    User     @relation("SettlementFrom", fields: [fromUserId], references: [id])
+  toUser      User     @relation("SettlementTo", fields: [toUserId], references: [id])
+
+  @@index([groupId, createdAt, id])
+}
+
+model Invite {
+  id        String   @id @default(cuid())
+  groupId   String
+  email     String
+  token     String   @unique
+  role      String
+  createdAt DateTime @default(now())
+  usedAt    DateTime?
+  group     Group    @relation(fields: [groupId], references: [id])
+}
+
+model RecurringExpense {
+  id            String   @id @default(cuid())
+  groupId       String
+  paidById      String
+  amountCents   Int
+  currency      String
+  note          String?
+  cron          String
+  beneficiaries Json?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  group         Group    @relation(fields: [groupId], references: [id])
 }
 
 model FxRate {
@@ -91,6 +124,68 @@ model FxRate {
   date      DateTime
   baseCcy   String
   quoteCcy  String
-  rate      Float
+  rate      Decimal  @db.Decimal(10, 6)
+  createdAt DateTime @default(now())
+  
   @@unique([date, baseCcy, quoteCcy])
+  @@index([date])
+}
+
+model NotificationPref {
+  userId String @id
+  email  Boolean @default(true)
+  push   Boolean @default(true)
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model IdempotencyKey {
+  id            String   @id @default(cuid())
+  // Client-provided header value: Idempotency-Key
+  key           String
+  // Scope to ensure uniqueness where it matters (e.g., per user + route)
+  scope         String   // e.g., `user:<userId>|path:<method> <route>`
+  method        String
+  path          String
+
+  // Deterministic fingerprint of the request body that matters
+  bodyHash      String
+
+  // Persisted response to return on subsequent identical requests
+  statusCode    Int
+  responseBody  Bytes    // raw JSON bytes (buffer)
+
+  // Execution markers
+  inProgress    Boolean  @default(false) // optimistic in-flight lock
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime // TTL (e.g., now + 24h)
+
+  @@unique([key, scope]) // the main uniqueness guarantee
+  @@index([scope, createdAt])
+  @@index([expiresAt])
+}
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+
+  actorUserId   String?  // null for system
+  groupId       String?  // scope when action is within a group
+  action        String   // e.g., "auth.login", "group.create", "expense.create", "settlement.create", "invite.accept"
+  targetType    String?  // e.g., "group","expense","settlement","user","file"
+  targetId      String?  // e.g., entity id
+
+  ip            String?
+  userAgent     String?
+
+  // Arbitrary metadata; store redacted DTO or useful bits
+  meta          Json
+
+  // Optional tamper-evidence: running hash of previous + current
+  prevHash      String?
+  chainHash     String?
+
+  @@index([groupId, createdAt, id])
+  @@index([actorUserId, createdAt, id])
+  @@index([createdAt, id])
 }
