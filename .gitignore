@@ -1,25 +1,169 @@
 # Dependencies
 node_modules/
+.pnpm-store/
 
 # Build artifacts & coverage
 dist/
+build/
 coverage/
+*.tsbuildinfo
 
 # Expo (React Native)
 .expo/
 .expo-shared/
+.expo/static/
+web-build/
 
 # Environment files (keep example files!)
 .env
 .env.*
 !.env.example
 
-# OS/editor noise (nice to have)
-.DS_Store
-.idea/
-.vscode/
+# Database
+*.db
+*.sqlite
+*.sqlite3
+prisma/dev.db*
+
+# Logs
 *.log
 npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+lerna-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Dependency directories
+jspm_packages/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# Next.js build output
+.next
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Gatsby files
+.cache/
+public
+
+# Storybook build outputs
+.out
+.storybook-out
+
+# Temporary folders
+tmp/
+temp/
+
+# OS/editor noise
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/settings.json
+.vscode/tasks.json
+.vscode/launch.json
+.vscode/extensions.json
+
+# Local development
+.local
+.cache/
+
+# Test files
+test-results/
+playwright-report/
+test-results.xml
+
+# Backup files
+*.backup
+*.bak
+*.tmp
+
+# Security & sensitive files
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+secrets/
+.secrets/
+
+# Documentation that should be private
+GOOGLE_OAUTH_SETUP.md
+RUNBOOK.md
+SECURITY.md
+SECURITY_SUMMARY.md
+
+# Environment and configuration files
+env.example
+.env.example
+
+# Scripts directory (contains sensitive setup scripts)
+scripts/
+
+# Test results and reports
+test-results/
+playwright-report/
+tests/playwright-report/
+tests/test-results/
+
+# Backup files found in project
+*.backup
+.env.backup
+
+# Build artifacts found
+apps/backend/dist/tsconfig.build.tsbuildinfo
+
+# OS files found
+.DS_Store

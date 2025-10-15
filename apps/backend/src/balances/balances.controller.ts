@@ -39,18 +39,29 @@ export class BalancesController {
 
   private async recomputeAndSet(groupId: string, key: string, ttlSeconds: number) {
     try {
-      const result = await this.prisma.groupBalance.findMany({
-        where: { groupId },
-        select: { groupId: true, userId: true, balanceCents: true, updatedAt: true },
-        orderBy: { userId: "asc" },
+      // Use the SQL view to get balances (this is the primary source of truth)
+      const balances = await this.prisma.$queryRaw<{ group_id: string; user_id: string; balance_cents: bigint }[]>
+        `SELECT group_id, user_id, balance_cents FROM group_balances_view WHERE group_id = ${groupId} ORDER BY user_id`;
+
+      // Get the user data for all user IDs
+      const userIds = balances.map(b => b.user_id);
+      const users = await this.prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, name: true, email: true }
       });
+
+      // Create a map for quick lookup
+      const userMap = new Map(users.map(user => [user.id, user]));
       
-      // Convert BigInt to number for JSON serialization and match old format
-      const data = result.map(row => ({
-        group_id: row.groupId,
-        user_id: row.userId,
-        balance_cents: Number(row.balanceCents)
+      // Convert BigInt to number for JSON serialization and include user data
+      const data = balances.map(row => ({
+        groupId: row.group_id,
+        userId: row.user_id,
+        balanceCents: Number(row.balance_cents),
+        user: userMap.get(row.user_id) || null // Include the user object
       }));
+      
+      console.log('🔍 Backend balances data:', JSON.stringify(data, null, 2));
       
       const json = JSON.stringify(data);
       await this.redis.client.setex(key, ttlSeconds, json);

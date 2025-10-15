@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, UseGuards, NotFoundException } from "@nestjs/common";
 import { ExpensesService } from './expenses.service.js';
 import { PrismaService } from '../prisma.service.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
@@ -49,51 +49,121 @@ export class ExpensesController {
       return await this.recomputeFirstPage(groupId, key, ttlSeconds);
     }
 
-    // Normal paginated path (no caching)
-    const items = await this.prisma.expense.findMany({
-      where: {
-        groupId,
-        ...(cursor
-          ? {
-              OR: [
-                { createdAt: { lt: cursor.createdAt } },
-                { createdAt: cursor.createdAt, id: { lt: cursor.id } },
-              ],
-            }
-          : {}),
-      },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: limit + 1,
-      include: { 
-        splits: { include: { user: true } }, 
-        paidBy: true 
-      },
+    // Fetch both expenses and settlements
+    const [expenses, settlements] = await Promise.all([
+      this.prisma.expense.findMany({
+        where: {
+          groupId,
+          ...(cursor
+            ? {
+                OR: [
+                  { createdAt: { lt: cursor.createdAt } },
+                  { createdAt: cursor.createdAt, id: { lt: cursor.id } },
+                ],
+              }
+            : {}),
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+        include: { 
+          splits: { include: { user: true } }, 
+          paidBy: true 
+        },
+      }),
+      this.prisma.settlement.findMany({
+        where: {
+          groupId,
+          ...(cursor
+            ? {
+                OR: [
+                  { createdAt: { lt: cursor.createdAt } },
+                  { createdAt: cursor.createdAt, id: { lt: cursor.id } },
+                ],
+              }
+            : {}),
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+        include: {
+          fromUser: { select: { id: true, name: true, email: true } },
+          toUser: { select: { id: true, name: true, email: true } }
+        },
+      })
+    ]);
+
+    // Combine and sort by date
+    const allItems = [
+      ...expenses.map(expense => ({ ...expense, type: 'expense' })),
+      ...settlements.map(settlement => ({ ...settlement, type: 'settlement' }))
+    ].sort((a, b) => {
+      const dateA = new Date(a.createdAt).getTime();
+      const dateB = new Date(b.createdAt).getTime();
+      if (dateA === dateB) {
+        return a.id.localeCompare(b.id);
+      }
+      return dateB - dateA; // Most recent first
     });
 
+    // Apply limit and cursor logic
+    let items = allItems;
     let nextCursor: string | null = null;
+    
     if (items.length > limit) {
-      const nextItem = items.pop()!;
-      nextCursor = encodeCursor(nextItem.createdAt, nextItem.id);
+      items = items.slice(0, limit);
+      const nextItem = allItems[limit];
+      if (nextItem) {
+        nextCursor = encodeCursor(nextItem.createdAt, nextItem.id);
+      }
     }
 
     return { items, nextCursor };
   }
 
   private async recomputeFirstPage(groupId: string, key: string, ttlSeconds: number) {
-    const items = await this.prisma.expense.findMany({
-      where: { groupId },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: 21, // +1 to compute nextCursor
-      include: { 
-        splits: { include: { user: true } }, 
-        paidBy: true 
-      },
+    // Fetch both expenses and settlements
+    const [expenses, settlements] = await Promise.all([
+      this.prisma.expense.findMany({
+        where: { groupId },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 21, // +1 to compute nextCursor
+        include: { 
+          splits: { include: { user: true } }, 
+          paidBy: true 
+        },
+      }),
+      this.prisma.settlement.findMany({
+        where: { groupId },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 21, // +1 to compute nextCursor
+        include: {
+          fromUser: { select: { id: true, name: true, email: true } },
+          toUser: { select: { id: true, name: true, email: true } }
+        },
+      })
+    ]);
+
+    // Combine and sort by date
+    const allItems = [
+      ...expenses.map(expense => ({ ...expense, type: 'expense' })),
+      ...settlements.map(settlement => ({ ...settlement, type: 'settlement' }))
+    ].sort((a, b) => {
+      const dateA = new Date(a.createdAt).getTime();
+      const dateB = new Date(b.createdAt).getTime();
+      if (dateA === dateB) {
+        return a.id.localeCompare(b.id);
+      }
+      return dateB - dateA; // Most recent first
     });
     
+    let items = allItems;
     let nextCursor: string | null = null;
+    
     if (items.length > 20) {
-      const next = items.pop()!;
-      nextCursor = encodeCursor(next.createdAt, next.id);
+      items = items.slice(0, 20);
+      const nextItem = allItems[20];
+      if (nextItem) {
+        nextCursor = encodeCursor(nextItem.createdAt, nextItem.id);
+      }
     }
     
     const payload = { items, nextCursor };

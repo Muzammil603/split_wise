@@ -63,7 +63,7 @@ async function bootstrap() {
       error: err.message,
       stack: err.stack,
       requestId: req.id,
-      userId: req.user?.userId,
+      userId: req.user?.id,
       url: req.url,
       method: req.method
     }, 'Unhandled error');

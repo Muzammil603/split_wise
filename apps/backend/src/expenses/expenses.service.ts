@@ -48,10 +48,13 @@ export class ExpensesService {
     currency: string;
     mode: "equal" | "shares" | "percent" | "exact";
     items?: any[];
+    splits?: any[];
     beneficiaries?: string[];
     date?: string;
     note?: string;
   }) {
+    console.log('ExpensesService.add called with data:', JSON.stringify(data, null, 2));
+    
     // Validate group exists and user is member
     const group = await this.prisma.group.findFirst({
       where: {
@@ -71,7 +74,9 @@ export class ExpensesService {
 
     switch (data.mode) {
       case "equal":
-        splits = equalSplit(data.totalCents, memberIds);
+        // Use beneficiaries if provided, otherwise use all group members
+        const equalMembers = data.beneficiaries && data.beneficiaries.length > 0 ? data.beneficiaries : memberIds;
+        splits = equalSplit(data.totalCents, equalMembers);
         break;
       case "shares":
         if (!data.items || data.items.length === 0) {
@@ -94,13 +99,20 @@ export class ExpensesService {
         splits = percentSplit(data.totalCents, percentages);
         break;
       case "exact":
-        if (!data.items || data.items.length === 0) {
-          throw new BadRequestException("Exact mode requires items");
+        // Use splits if provided (from frontend), otherwise use items
+        if (data.splits && data.splits.length > 0) {
+          splits = data.splits.map((split) => ({
+            userId: split.userId,
+            amountCents: split.amountCents,
+          }));
+        } else if (data.items && data.items.length > 0) {
+          splits = data.items.map((item) => ({
+            userId: item.userId,
+            amountCents: item.amountCents,
+          }));
+        } else {
+          throw new BadRequestException("Exact mode requires splits or items");
         }
-        splits = data.items.map((item) => ({
-          userId: item.userId,
-          amountCents: item.amountCents,
-        }));
         break;
       default:
         throw new BadRequestException("Invalid split mode");

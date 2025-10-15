@@ -2,6 +2,8 @@ import { Module, OnModuleInit } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { PrismaService } from './prisma.service.js';
+import { AppController } from './app.controller.js';
+import { AppService } from './app.service.js';
 import { GroupsModule } from './groups/groups.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { ExpensesModule } from './expenses/expenses.module.js';
@@ -14,6 +16,8 @@ import { RecurringModule } from './recurring/recurring.module.js';
 import { AuditModule } from './audit/audit.module.js';
 import { PrivacyModule } from './privacy/privacy.module.js';
 import { ActivityModule } from './activity/activity.module.js';
+import { EmailModule } from './email/email.module.js';
+import { FriendsModule } from './friends/friends.module.js';
 import { scheduleRecurring } from './recurring/recurring.scheduler.js';
 import { worker } from './recurring/recurring.worker.js';
 import { notificationWorker } from './notifications/notifications.worker.js';
@@ -40,8 +44,12 @@ import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
         AuditModule,
         PrivacyModule,
         ActivityModule,
+        EmailModule,
+        FriendsModule,
   ],
+  controllers: [AppController],
   providers: [
+    AppService,
     PrismaService,
     RedisService,
     IdempotencyService,

@@ -16,7 +16,7 @@ export class AuditInterceptor implements NestInterceptor {
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const req: any = context.switchToHttp().getRequest();
-    const actorUserId = req.user?.userId ?? null;
+    const actorUserId = req.user?.id ?? null;
     const groupId = req.params?.groupId ?? req.body?.groupId ?? null;
     const ip = req.ip ?? req.headers["x-forwarded-for"] ?? null;
     const userAgent = req.headers["user-agent"] ?? null;

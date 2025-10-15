@@ -6,11 +6,13 @@ import { AuthService } from './auth.service.js';
 import { PrismaService } from '../prisma.service.js';
 import { JwtStrategy } from './jwt.strategy.js';
 import { AuditService } from '../audit/audit.service.js';
+import { PrivacyService } from '../privacy/privacy.service.js';
+import { EmailModule } from '../email/email.module.js';
 
 @Module({
-  imports: [JwtModule.register({})],
+  imports: [JwtModule.register({}), EmailModule],
   controllers: [AuthController, MeController],
-  providers: [AuthService, PrismaService, JwtStrategy, AuditService],
+  providers: [AuthService, PrismaService, JwtStrategy, AuditService, PrivacyService],
   exports: [JwtModule],
 })
 export class AuthModule {}

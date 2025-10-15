@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, UseGuards, NotFoundException } from "@nestjs/common";
 import { PrismaService } from '../prisma.service.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { clampLimit, decodeCursor, encodeCursor, PageResult } from '../common/pagination.js';
 import { AuditService } from '../audit/audit.service.js';
+import { CurrentUser } from '../auth/current-user.decorator.js';
 
 @UseGuards(JwtAuthGuard)
 @Controller("groups")
@@ -37,18 +38,28 @@ export class GroupsController {
 
   @Get()
   async list(
+    @CurrentUser() user: { id: string },
     @Query("limit") limitQ?: string,
     @Query("cursor") cursorQ?: string,
   ): Promise<PageResult<any>> {
     const limit = clampLimit(Number(limitQ));
     const cursor = decodeCursor(cursorQ);
 
-    const where = {}; // (optionally) filter by membership later
+    // Only show groups where the current user is a member
+    const where = {
+      members: {
+        some: {
+          userId: user.id
+        }
+      }
+    };
+
     const orderBy = [{ createdAt: "desc" as const }, { id: "desc" as const }];
 
     const items = await this.prisma.group.findMany({
       where: cursor
         ? {
+            ...where,
             OR: [
               { createdAt: { lt: cursor.createdAt } },
               { createdAt: cursor.createdAt, id: { lt: cursor.id } },
@@ -57,7 +68,13 @@ export class GroupsController {
         : where,
       take: limit + 1, // fetch one extra to detect next page
       orderBy,
-      include: { members: true },
+      include: {
+        members: {
+          include: {
+            user: true
+          }
+        }
+      },
     });
 
     let nextCursor: string | null = null;
@@ -70,7 +87,33 @@ export class GroupsController {
   }
 
   @Get(":id")
-  get(@Param("id") id: string) {
-    return this.prisma.group.findUnique({ where: { id }, include: { members: true } });
+  async get(
+    @CurrentUser() user: { id: string },
+    @Param("id") id: string
+  ) {
+    // Only allow access to groups where the user is a member
+    const group = await this.prisma.group.findFirst({
+      where: {
+        id,
+        members: {
+          some: {
+            userId: user.id
+          }
+        }
+      },
+      include: {
+        members: {
+          include: {
+            user: true
+          }
+        }
+      }
+    });
+
+    if (!group) {
+      throw new NotFoundException('Group not found or you are not a member');
+    }
+
+    return group;
   }
 }

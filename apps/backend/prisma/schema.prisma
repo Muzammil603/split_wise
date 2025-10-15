@@ -23,10 +23,14 @@ model User {
   
   paidExpenses     Expense[]      @relation("ExpensePayer")
   expenseSplits    ExpenseSplit[]
+  expensePayers    ExpensePayer[]
   groupMemberships GroupMember[]
   settlementsFrom  Settlement[]   @relation("SettlementFrom")
   settlementsTo    Settlement[]   @relation("SettlementTo")
   notificationPref NotificationPref?
+  passwordResetTokens PasswordResetToken[]
+  friendsAsUser       Friend[]        @relation("UserFriends")
+  friendsAsFriend     Friend[]        @relation("FriendOf")
 }
 
 model Group {
@@ -69,6 +73,7 @@ model Expense {
   group       Group          @relation(fields: [groupId], references: [id])
   paidBy      User           @relation("ExpensePayer", fields: [paidById], references: [id])
   splits      ExpenseSplit[]
+  payers      ExpensePayer[] // New relation for multiple payers
 
   @@index([groupId, createdAt, id])
 }
@@ -79,6 +84,17 @@ model ExpenseSplit {
   userId       String
   amountCents  Int
   expense      Expense @relation(fields: [expenseId], references: [id])
+  user         User    @relation(fields: [userId], references: [id])
+
+  @@unique([expenseId, userId])
+}
+
+model ExpensePayer {
+  id           String @id @default(cuid())
+  expenseId    String
+  userId       String
+  amountCents  Int
+  expense      Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
   user         User    @relation(fields: [userId], references: [id])
 
   @@unique([expenseId, userId])
@@ -223,4 +239,34 @@ model AuditLog {
   @@index([groupId, createdAt, id])
   @@index([actorUserId, createdAt, id])
   @@index([createdAt, id])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([token])
+  @@index([expiresAt])
+}
+
+model Friend {
+  id        String   @id @default(cuid())
+  userId    String   // The user who added the friend
+  friendId  String   // The friend being added
+  token     String   @unique // Token for friend to accept
+  status    String   @default("pending") // pending, accepted, declined
+  createdAt DateTime @default(now())
+  acceptedAt DateTime?
+  
+  user   User @relation("UserFriends", fields: [userId], references: [id], onDelete: Cascade)
+  friend User @relation("FriendOf", fields: [friendId], references: [id], onDelete: Cascade)
+  
+  @@index([token])
+  @@index([status])
 }
